@@ -6,6 +6,9 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.*;
 
@@ -130,6 +133,24 @@ public class TimetableSystemTest {
                 () -> {
                     CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", timetableSystem);
                     assertEquals(29, timetableSystem.getClasses().size());
+                });
+    }
+
+    @Tag("Thomas")
+    @Tag("Critical")
+    @Test
+    @DisplayName("1.02 - Similar imported records are updated")
+    void UpdateRecordOnImportTest() {
+        TimetableSystem timetableSystem = new TimetableSystem();
+
+        CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", timetableSystem);
+        assertAll(() -> assertEquals(29, timetableSystem.getClasses().size()),
+                () -> {
+                    CSVHandler.importFromCSV("src/test/resources/COMP1002 Class Update.csv", timetableSystem);
+                    assertEquals(29, timetableSystem.getClasses().size()); // Shows no new record was created
+                    List<ClassSchedule> updatedClass = timetableSystem.getClasses().stream().filter(cs -> cs.getTime().equals("20:00 - 23:00")).toList();
+                    assertEquals(1, updatedClass.size());
+                    assertEquals("G42 lecture room", updatedClass.get(0).getLocation());
                 });
     }
 }
