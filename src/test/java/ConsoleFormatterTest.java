@@ -131,4 +131,41 @@ public class ConsoleFormatterTest {
         ConsoleFormatter.printSuccess("Consistent message");
         String output = captured();
         assertAll(() -> assertTrue(output.contains("[OK]")),() -> assertTrue(output.contains("Consistent message")));}
+
+
+    @Tag("Thomas")
+    @Tag("Core")
+    @DisplayName("Title Print Test")
+    @Test
+    void printTitleTest() {
+        String[] rawTitle = {
+                " _____ _                _        _     _      ",
+                "|_   _(_)_ __ ___   ___| |_ __ _| |__ | | ___ ",
+                "  | | | | '_ ` _ \\ / _ \\ __/ _` | '_ \\| |/ _ \\",
+                "  | | | | | | | | |  __/ || (_| | |_) | |  __/",
+                "  |_| |_|_| |_| |_|\\___|\\__\\__,_|_.__/|_|\\___|",
+                " __  __                                        ",
+                "|  \\/  | __ _ _ __   __ _  __ _  ___ _ __     ",
+                "| |\\/| |/ _` | '_ \\/ _` |/ _` |/ _ \\ '__|    ",
+                "| |  | | (_| | | | | (_| | (_| |  __/ |       ",
+                "|_|  |_|\\__,_|_| |_|\\__,_|\\__, |\\___|_|       ",
+                "                          |___/              "
+        };
+
+        String formattedTitle = "\u001b[36m" + String.join("\u001b[0m\n\u001b[36m", rawTitle) + "\u001b[0m";
+
+        String expectedTitle = "\u001b[36m" + "=".repeat(ConsoleFormatter.WIDTH) + "\u001b[0m" + "\n" +
+                formattedTitle + "\n" +
+                "\u001b[36m" + "=".repeat(ConsoleFormatter.WIDTH) + "\u001b[0m" + "\n\n";
+
+
+        ConsoleFormatter.printTitle();
+        String output = captured();
+        assertEquals(expectedTitle, output);
+    }
+
+//    @Tag("Thomas")
+//    @Tag("Core")
+//    @DisplayName("Title Print Test")
+//    @Test
 }
