@@ -1,3 +1,4 @@
+import timetable.CSVHandler;
 import timetable.TimetableSystem;
 import timetable.Timetable;
 import timetable.ClassSchedule;
@@ -5,6 +6,9 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.*;
 
@@ -116,4 +120,93 @@ public class TimetableSystemTest {
         system.addTimetable(new Timetable(name));
         assumeTrue(system.getTimetables().size() == 1);
         assertNotNull(system.getTimetableByName(name));}
+
+    @Tag("Thomas")
+    @Tag("Critical")
+    @Test
+    @DisplayName("1.03 - Duplicate imported records are ignored")
+    void DuplicateRecordTest() {
+        CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", system);
+        assertAll(() -> assertEquals(29, system.getClasses().size()),
+                () -> {
+                    CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", system);
+                    assertEquals(29, system.getClasses().size());
+                });
+    }
+
+    @Tag("Thomas")
+    @Tag("Critical")
+    @Test
+    @DisplayName("1.02 - Similar imported records are updated")
+    void UpdateRecordOnImportTest() {
+        CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", system);
+        assertAll(() -> assertEquals(29, system.getClasses().size()),
+                () -> {
+                    CSVHandler.importFromCSV("src/test/resources/COMP1002 Class Update.csv", system);
+                    assertEquals(29, system.getClasses().size()); // Shows no new record was created
+                    List<ClassSchedule> updatedClass = system.getClasses().stream().filter(cs -> cs.getTime().equals("20:00 - 23:00")).toList();
+                    assertEquals(1, updatedClass.size());
+                    assertEquals("G42 lecture room", updatedClass.get(0).getLocation());
+                });
+    }
+
+    @Tag("Thomas")
+    @Tag("Core")
+    @Test
+    @DisplayName("2.03 - Class records can be edited")
+    void EditClassRecordTest(){
+        CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", system);
+
+        String newTopic = "COMP1234";
+        String newAvailability = "In person - Tonsley - S1 - 1";
+        String newClassName = "Tutorial";
+        String newInstance = "1";
+        String newDate = "1 Mar - 29 Apr";
+        String newDay = "Friday";
+        String newTime = "4:00 - 15:00";
+        String newLocation = "G42 lecture room";
+
+        ClassSchedule classToEdit = system.getClasses().get(0);
+
+        classToEdit.setTopic(newTopic);
+        classToEdit.setAvailability(newAvailability);
+        classToEdit.setClassName(newClassName);
+        classToEdit.setClassInstance(newInstance);
+        classToEdit.setDate(newDate);
+        classToEdit.setDay(newDay);
+        classToEdit.setTime(newTime);
+        classToEdit.setLocation(newLocation);
+
+        assertEquals("Topic: " + newTopic + "\n" +
+                "Availability: " + newAvailability + "\n" +
+                "Class: " + newClassName + "\n" +
+                "Class Instance: " + newInstance + "\n" +
+                "Date: " + newDate + "\n" +
+                "Day: " + newDay + "\n" +
+                "Time: " + newTime + "\n" +
+                "Location: " + newLocation, classToEdit.toString());
+
+
+    }
+
+    @Tag("Thomas")
+    @Tag("Core")
+    @Test
+    @DisplayName("2.04 - Class records can be deleted")
+    void DeleteClassRecordTest() {
+        CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", system);
+        system.getClasses().remove(0);
+        assertEquals(28, system.getClasses().size());
+
+    }
+
+    @Tag("Thomas")
+    @Tag("Core")
+    @Test
+    @DisplayName("Class Records can be cleared")
+    void clearClassRecordTest() {
+        CSVHandler.importFromCSV("src/test/resources/COMP1002 Fundamentals of Artificial Intelligence.csv", system);
+        system.clearClasses();
+        assertEquals(0, system.getClasses().size());
+    }
 }

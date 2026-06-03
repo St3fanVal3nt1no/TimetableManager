@@ -130,4 +130,34 @@ public class MainTest {
                 case "printInfo"    -> ConsoleFormatter.printInfo("test");}
         } finally {System.setOut(saved);}
         assertTrue(buf.toString().contains(expectedMarker.trim()));}
+
+
+    @Tag("Thomas")
+    @Tag("Additional")
+    @DisplayName("3.01 - Title is displayed on startup")
+    @Test
+    void TitleDisplayedTest() {
+        String[] rawTitle = {"\u001B[36m========================================================\u001B[0m",
+            "\u001B[36m _____ _                _        _     _      \u001B[0m",
+                    "\u001B[36m|_   _(_)_ __ ___   ___| |_ __ _| |__ | | ___ \u001B[0m",
+                    "\u001B[36m  | | | | '_ ` _ \\ / _ \\ __/ _` | '_ \\| |/ _ \\\u001B[0m",
+                    "\u001B[36m  | | | | | | | | |  __/ || (_| | |_) | |  __/\u001B[0m",
+                    "\u001B[36m  |_| |_|_| |_| |_|\\___|\\__\\__,_|_.__/|_|\\___|\u001B[0m",
+                    "\u001B[36m __  __                                        \u001B[0m",
+                    "\u001B[36m|  \\/  | __ _ _ __   __ _  __ _  ___ _ __     \u001B[0m",
+                    "\u001B[36m| |\\/| |/ _` | '_ \\/ _` |/ _` |/ _ \\ '__|    \u001B[0m",
+                    "\u001B[36m| |  | | (_| | | | | (_| | (_| |  __/ |       \u001B[0m",
+                    "\u001B[36m|_|  |_|\\__,_|_| |_|\\__,_|\\__, |\\___|_|       \u001B[0m",
+                    "\u001B[36m                          |___/              \u001B[0m",
+                "\u001B[36m========================================================\u001B[0m\n\n"
+        };
+
+        String expectedTitle = String.join("\n", rawTitle);
+
+        String input = "7\n";
+        ByteArrayInputStream captureInputStream = new ByteArrayInputStream(input.getBytes());
+        System.setIn(captureInputStream);
+        Main.main(new String[]{""});
+        assertTrue(suppressedOut.toString().contains(expectedTitle));
+    }
 }
