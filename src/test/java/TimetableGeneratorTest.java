@@ -1,4 +1,6 @@
 import timetable.TimetableGenerator;
+import timetable.Timetable;
+import timetable.ClassSchedule;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -7,8 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.*;
-@TestMethodOrder(MethodOrderer.DisplayName.class)
 
+@TestMethodOrder(MethodOrderer.DisplayName.class)
 public class TimetableGeneratorTest {
 
 }
