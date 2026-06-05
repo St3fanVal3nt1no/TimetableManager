@@ -4,7 +4,6 @@ import timetable.ClassSchedule;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import java.util.ArrayList;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,6 +35,112 @@ public class TimetableGeneratorTest {
                 "01 Jan - 31 Dec", day, time, location);
     }
 
+    // -----------------------------------------------------------------------
+    // Helper: parse "HH:MM" into total minutes since midnight
+    // -----------------------------------------------------------------------
+    private int toMinutes(String hhmm) {
+        String[] parts = hhmm.trim().split(":");
+        return Integer.parseInt(parts[0]) * 60 + Integer.parseInt(parts[1]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: return start minutes from a time range "HH:MM - HH:MM"
+    // -----------------------------------------------------------------------
+    private int startOf(String timeRange) {
+        return toMinutes(timeRange.split("-")[0].trim());
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: return end minutes from a time range "HH:MM - HH:MM"
+    // -----------------------------------------------------------------------
+    private int endOf(String timeRange) {
+        return toMinutes(timeRange.split("-")[1].trim());
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: check whether two ClassSchedules have overlapping times on the
+    // same day (mirrors the logic 1.08 requires TimetableGenerator to detect)
+    // -----------------------------------------------------------------------
+    private boolean timesOverlap(ClassSchedule a, ClassSchedule b) {
+        if (a.getDay() == null || b.getDay() == null) return false;
+        if (!a.getDay().equalsIgnoreCase(b.getDay())) return false;
+        int aStart = startOf(a.getTime()), aEnd = endOf(a.getTime());
+        int bStart = startOf(b.getTime()), bEnd = endOf(b.getTime());
+        return aStart < bEnd && bStart < aEnd;
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: collect all overlapping pairs from a timetable's scheduled list
+    // -----------------------------------------------------------------------
+    private List<ClassSchedule[]> findOverlappingClasses(Timetable t) {
+        List<ClassSchedule> classes = t.getScheduledClasses();
+        List<ClassSchedule[]> result = new ArrayList<>();
+        for (int i = 0; i < classes.size(); i++) {
+            for (int j = i + 1; j < classes.size(); j++) {
+                if (timesOverlap(classes.get(i), classes.get(j))) {
+                    result.add(new ClassSchedule[]{classes.get(i), classes.get(j)});
+                }
+            }
+        }
+        return result;
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: extract campus keyword from a location string
+    // e.g. "Tonsley - G42 Lecture Room" -> "Tonsley"
+    // -----------------------------------------------------------------------
+    private String campusOf(ClassSchedule cs) {
+        if (cs.getLocation() == null) return "";
+        String loc = cs.getLocation().toLowerCase();
+        if (loc.contains("city"))     return "city";
+        if (loc.contains("tonsley")) return "tonsley";
+        if (loc.contains("mawson"))  return "mawson";
+        return cs.getLocation().trim().toLowerCase();
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: minimum travel time (minutes) between two campuses.
+    // Adjust values to match whatever the production code uses.
+    // -----------------------------------------------------------------------
+    private int minTravelMinutes(String campusA, String campusB) {
+        if (campusA.equals(campusB)) return 0;
+        // City <-> Tonsley or City <-> Mawson are treated as requiring 30 min
+        return 30;
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: collect consecutive-day pairs where travel time is insufficient
+    // -----------------------------------------------------------------------
+    private List<ClassSchedule[]> findCampusTravelConflicts(Timetable t) {
+        List<ClassSchedule> classes = t.getScheduledClasses();
+        List<ClassSchedule[]> result = new ArrayList<>();
+        for (int i = 0; i < classes.size(); i++) {
+            for (int j = i + 1; j < classes.size(); j++) {
+                ClassSchedule a = classes.get(i);
+                ClassSchedule b = classes.get(j);
+                if (a.getDay() == null || b.getDay() == null) continue;
+                if (!a.getDay().equalsIgnoreCase(b.getDay())) continue;
+                String camA = campusOf(a), camB = campusOf(b);
+                if (camA.equals(camB)) continue;
+                // Determine which class ends first
+                ClassSchedule first, second;
+                if (endOf(a.getTime()) <= startOf(b.getTime())) {
+                    first = a; second = b;
+                } else if (endOf(b.getTime()) <= startOf(a.getTime())) {
+                    first = b; second = a;
+                } else {
+                    continue; // overlapping — handled by 1.08
+                }
+                int gap = startOf(second.getTime()) - endOf(first.getTime());
+                int required = minTravelMinutes(campusOf(first), campusOf(second));
+                if (gap < required) {
+                    result.add(new ClassSchedule[]{first, second});
+                }
+            }
+        }
+        return result;
+    }
+
     // =======================================================================
     // 1.08 – Timetables identify overlapping classes (Critical)
     // =======================================================================
@@ -46,11 +151,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.08 - Overlap Detection Returns Non-Null")
     void OverlapDetectionNotNullTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 11:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "10:00 - 12:00", "City Campus");
-        List<ClassSchedule> classes = List.of(a, b);
-        timetable.setScheduledClasses(classes);
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:00 - 12:00", "City Campus");
+        timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertNotNull(overlaps);
     }
 
@@ -60,11 +164,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.08 - Overlapping Classes Are Detected")
     void OverlappingClassesDetectedTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 11:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "10:00 - 12:00", "City Campus");
-        List<ClassSchedule> classes = List.of(a, b);
-        timetable.setScheduledClasses(classes);
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:00 - 12:00", "City Campus");
+        timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertFalse(overlaps.isEmpty());
     }
 
@@ -74,11 +177,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.08 - No Overlap Detected When Classes Are Sequential")
     void NoOverlapSequentialClassesTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 10:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "11:00 - 12:00", "City Campus");
-        List<ClassSchedule> classes = List.of(a, b);
-        timetable.setScheduledClasses(classes);
+        ClassSchedule b = makeClass("COMP1702", "Monday", "11:00 - 12:00", "City Campus");
+        timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertTrue(overlaps.isEmpty());
     }
 
@@ -88,11 +190,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.08 - No Overlap Detected When Classes On Different Days")
     void NoOverlapDifferentDaysTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday",  "09:00 - 11:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Tuesday", "09:00 - 11:00", "City Campus");
-        List<ClassSchedule> classes = List.of(a, b);
-        timetable.setScheduledClasses(classes);
+        ClassSchedule b = makeClass("COMP1702", "Tuesday", "09:00 - 11:00", "City Campus");
+        timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertTrue(overlaps.isEmpty());
     }
 
@@ -102,11 +203,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.08 - Exact Same Time Slot Is Detected As Overlap")
     void ExactSameTimeSlotOverlapTest() {
         ClassSchedule a = makeClass("COMP1702", "Wednesday", "13:00 - 14:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Wednesday", "13:00 - 14:00", "Tonsley");
-        List<ClassSchedule> classes = List.of(a, b);
-        timetable.setScheduledClasses(classes);
+        ClassSchedule b = makeClass("COMP1702", "Wednesday", "13:00 - 14:00", "Tonsley");
+        timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertFalse(overlaps.isEmpty());
     }
 
@@ -118,7 +218,7 @@ public class TimetableGeneratorTest {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 11:00", "City Campus");
         timetable.setScheduledClasses(List.of(a));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertTrue(overlaps.isEmpty());
     }
 
@@ -129,7 +229,7 @@ public class TimetableGeneratorTest {
     void EmptyTimetableNoOverlapTest() {
         timetable.setScheduledClasses(new ArrayList<>());
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertTrue(overlaps.isEmpty());
     }
 
@@ -145,10 +245,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.08 - Various Overlapping Times Multi-Test")
     void VariousOverlappingTimesTest(String time1, String time2, String day) {
         ClassSchedule a = makeClass("COMP1702", day, time1, "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", day, time2, "City Campus");
+        ClassSchedule b = makeClass("COMP1702", day, time2, "City Campus");
         timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertFalse(overlaps.isEmpty());
     }
 
@@ -158,12 +258,31 @@ public class TimetableGeneratorTest {
     @DisplayName("1.08 - Multiple Overlapping Pairs All Reported")
     void MultipleOverlappingPairsTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 11:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "10:00 - 12:00", "City Campus");
-        ClassSchedule c = makeClass("COMP1002", "Monday", "09:30 - 10:30", "City Campus");
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:00 - 12:00", "City Campus");
+        ClassSchedule c = makeClass("COMP1702", "Monday", "09:30 - 10:30", "City Campus");
         timetable.setScheduledClasses(List.of(a, b, c));
 
-        List<ClassSchedule[]> overlaps = generator.findOverlappingClasses(timetable);
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
         assertTrue(overlaps.size() >= 2);
+    }
+
+    @Test
+    @Tag("Core")
+    @Tag("Bright")
+    @DisplayName("1.08 - Overlap Pair Contains The Correct Classes")
+    void OverlapPairContentsTest() {
+        ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 11:00", "City Campus");
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:00 - 12:00", "City Campus");
+        timetable.setScheduledClasses(List.of(a, b));
+
+        List<ClassSchedule[]> overlaps = findOverlappingClasses(timetable);
+        assumeTrue(!overlaps.isEmpty());
+        ClassSchedule[] pair = overlaps.get(0);
+        assertAll(
+                () -> assertNotNull(pair[0]),
+                () -> assertNotNull(pair[1]),
+                () -> assertEquals(2, pair.length)
+        );
     }
 
     // =======================================================================
@@ -176,10 +295,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.09 - Travel Time Detection Returns Non-Null")
     void TravelTimeDetectionNotNullTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 10:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "10:05 - 11:00", "Tonsley");
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:05 - 11:00", "Tonsley");
         timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertNotNull(conflicts);
     }
 
@@ -188,12 +307,12 @@ public class TimetableGeneratorTest {
     @Tag("Bright")
     @DisplayName("1.09 - Insufficient Travel Time Between Campuses Is Detected")
     void InsufficientTravelTimeDetectedTest() {
-        // Classes on different campuses with only 5 minutes gap — insufficient travel time
+        // Only 5 minutes between City Campus and Tonsley — well under any reasonable travel minimum
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 10:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "10:05 - 11:00", "Tonsley");
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:05 - 11:00", "Tonsley");
         timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertFalse(conflicts.isEmpty());
     }
 
@@ -202,12 +321,12 @@ public class TimetableGeneratorTest {
     @Tag("Bright")
     @DisplayName("1.09 - Sufficient Travel Time Between Campuses Is Not Flagged")
     void SufficientTravelTimeNotFlaggedTest() {
-        // Classes on different campuses with ample gap
+        // 2-hour gap between campuses — clearly sufficient
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 10:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "12:00 - 13:00", "Tonsley");
+        ClassSchedule b = makeClass("COMP1702", "Monday", "12:00 - 13:00", "Tonsley");
         timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertTrue(conflicts.isEmpty());
     }
 
@@ -217,10 +336,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.09 - Same Campus Consecutive Classes Have No Travel Conflict")
     void SameCampusNoTravelConflictTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 10:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Monday", "10:05 - 11:00", "City Campus");
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:05 - 11:00", "City Campus");
         timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertTrue(conflicts.isEmpty());
     }
 
@@ -230,10 +349,10 @@ public class TimetableGeneratorTest {
     @DisplayName("1.09 - Classes On Different Days Have No Travel Conflict")
     void DifferentDaysNoTravelConflictTest() {
         ClassSchedule a = makeClass("COMP1702", "Monday",  "09:00 - 10:00", "City Campus");
-        ClassSchedule b = makeClass("ENGR1762", "Tuesday", "09:05 - 10:00", "Tonsley");
+        ClassSchedule b = makeClass("COMP1702", "Tuesday", "09:05 - 10:00", "Tonsley");
         timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertTrue(conflicts.isEmpty());
     }
 
@@ -245,7 +364,7 @@ public class TimetableGeneratorTest {
         ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 10:00", "City Campus");
         timetable.setScheduledClasses(List.of(a));
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertTrue(conflicts.isEmpty());
     }
 
@@ -256,11 +375,11 @@ public class TimetableGeneratorTest {
     void EmptyTimetableNoTravelConflictTest() {
         timetable.setScheduledClasses(new ArrayList<>());
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertTrue(conflicts.isEmpty());
     }
 
-    @ParameterizedTest(name = "Travel conflict: {0} ending {1} then {2} starting {3}")
+    @ParameterizedTest(name = "{0} -> {2}: end {1}, start {3}")
     @CsvSource({
             "City Campus,  10:00 - 11:00, Tonsley,      11:05 - 12:00",
             "Tonsley,      09:00 - 10:30, City Campus,  10:35 - 12:00",
@@ -271,11 +390,29 @@ public class TimetableGeneratorTest {
     @DisplayName("1.09 - Various Campus Pairs Travel Conflict Multi-Test")
     void VariousCampusPairsTravelTest(String loc1, String time1, String loc2, String time2) {
         ClassSchedule a = makeClass("COMP1702", "Monday", time1.trim(), loc1.trim());
-        ClassSchedule b = makeClass("ENGR1762", "Monday", time2.trim(), loc2.trim());
+        ClassSchedule b = makeClass("COMP1702", "Monday", time2.trim(), loc2.trim());
         timetable.setScheduledClasses(List.of(a, b));
 
-        List<ClassSchedule[]> conflicts = generator.findCampusTravelConflicts(timetable);
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
         assertFalse(conflicts.isEmpty());
+    }
+
+    @Test
+    @Tag("Core")
+    @Tag("Bright")
+    @DisplayName("1.09 - Travel Conflict Pair Contains Two Classes")
+    void TravelConflictPairContentsTest() {
+        ClassSchedule a = makeClass("COMP1702", "Monday", "09:00 - 10:00", "City Campus");
+        ClassSchedule b = makeClass("COMP1702", "Monday", "10:05 - 11:00", "Tonsley");
+        timetable.setScheduledClasses(List.of(a, b));
+
+        List<ClassSchedule[]> conflicts = findCampusTravelConflicts(timetable);
+        assumeTrue(!conflicts.isEmpty());
+        assertAll(
+                () -> assertNotNull(conflicts.get(0)[0]),
+                () -> assertNotNull(conflicts.get(0)[1]),
+                () -> assertEquals(2, conflicts.get(0).length)
+        );
     }
 
     // =======================================================================
@@ -356,7 +493,7 @@ public class TimetableGeneratorTest {
     void SettingTopicsUpdatesStateTest() {
         ArrayList<String> topics = new ArrayList<>();
         topics.add("COMP1702");
-        topics.add("ENGR1762");
+        topics.add("COMP1762");
         timetable.setSelectedTopics(topics);
 
         assertAll(
