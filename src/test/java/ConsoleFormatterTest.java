@@ -387,8 +387,4 @@ public class ConsoleFormatterTest {
         String output = captured();
         assertEquals(expected.toString(), output);
     }
-
-
-
-
 }
