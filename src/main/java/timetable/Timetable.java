@@ -14,7 +14,7 @@ public class Timetable {
     private List<ClassSchedule> scheduledClasses;
 
     public Timetable() {
-        semester = "";
+        semester = null;
         allowLectureOverlap = false;
         selectedTopics = new ArrayList<>();
         selectedCampuses = new ArrayList<>();
